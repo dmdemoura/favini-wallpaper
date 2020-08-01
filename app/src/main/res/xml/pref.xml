@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+	android:key="pscreen">
+	<EditTextPreference
+		android:key="folder"
+		android:title="Local das imagens"
+		android:defaultValue="/storage/emulated/0/DCIM/Camera/" />
+	<EditTextPreference
+		android:key="delay"
+		android:title="Tempo para mudar(em segundos, inteiros)"
+		android:defaultValue="5" />
+</PreferenceScreen>
