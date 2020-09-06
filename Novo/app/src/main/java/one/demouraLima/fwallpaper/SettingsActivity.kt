@@ -1,10 +1,16 @@
 package one.demouraLima.fwallpaper
 
 import android.content.Intent
+import android.database.Cursor
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.DocumentsContract
+import android.provider.OpenableColumns
+import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.documentfile.provider.DocumentFile
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.PreferenceManager
@@ -21,23 +27,38 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     class SettingsFragment : PreferenceFragmentCompat() {
+        private var openSourceFolder: ActivityResultLauncher<Uri>? = null
+
+        override fun onCreate(savedInstanceState: Bundle?) {
+            super.onCreate(savedInstanceState)
+
+            openSourceFolder = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
+                if (uri != null)
+                {
+                    val file = DocumentFile.fromSingleUri(requireContext(), uri)
+
+                    val prefStorage = PreferenceManager.getDefaultSharedPreferences(context)
+                    val prefEditor = prefStorage.edit()
+                    prefEditor.putString("Source Folder", uri.toString())
+                    prefEditor.putString("Source Folder Name", file?.name)
+                    prefEditor.apply()
+
+                    findPreference<Preference>("Source Folder")?.summary = uri.toString()
+                }
+            }
+        }
+
         override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
             setPreferencesFromResource(R.xml.root_preferences, rootKey)
-            val pref = findPreference<Preference>("test")
+            val pref = findPreference<Preference>("Source Folder")
 
             pref?.onPreferenceClickListener = Preference.OnPreferenceClickListener { preference: Preference ->
-                registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
-                    if (uri != null)
-                    {
-                        val prefStorage = PreferenceManager.getDefaultSharedPreferences(preference.context)
-                        val prefEditor = prefStorage.edit()
-                        prefEditor.putString(preference.key, uri.toString())
-                        prefEditor.apply()
-                    }
-                }
-
+                openSourceFolder?.launch(Uri.EMPTY)
                 true
             }
+
+            val prefStorage = PreferenceManager.getDefaultSharedPreferences(context)
+            pref?.summary = prefStorage.getString("Source Folder", "No folder selected")
         }
     }
 }

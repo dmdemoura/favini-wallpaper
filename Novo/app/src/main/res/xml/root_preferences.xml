@@ -4,7 +4,10 @@
             app:title="Delay"
             app:summary="Delay between switching screens"
             app:defaultValue="1"
-            app:key="Delay"/>
+            app:key="Delay"
+            app:showSeekBarValue="true"
+            app:min="1"
+            android:max="120"/>
     <Preference
         app:title = "Choose Source"
         app:key = "Source Folder">
