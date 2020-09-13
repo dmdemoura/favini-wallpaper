@@ -2,8 +2,6 @@ package one.demouraLima.fwallpaper
 
 import android.graphics.*
 import android.net.Uri
-import android.os.ParcelFileDescriptor
-import android.provider.DocumentsContract
 import android.service.wallpaper.WallpaperService
 import android.util.Log
 import android.util.Size
@@ -13,7 +11,6 @@ import androidx.preference.PreferenceManager
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.sendBlocking
-import java.io.FileDescriptor
 import kotlin.coroutines.coroutineContext
 import kotlin.time.ExperimentalTime
 import kotlin.time.seconds
@@ -57,67 +54,34 @@ class FWallpaperService : WallpaperService() {
     inner class BlankEngine() : Engine() {}
 
     inner class FEngine(
-        private val sourceFolder: Uri,
+        sourceFolder: Uri,
         private val gridSize: Size,
         private val scaleType: ScaleType,
         private val delaySeconds: Int
     ) : Engine() {
-        private val photoIds: MutableList<String> = mutableListOf()
-        private var iterator: Iterator<String> = photoIds.iterator()
-
-        private var bitmaps: MutableList<Bitmap?> = mutableListOf()
-        private var nextBitmaps: MutableList<Bitmap?> = mutableListOf()
-
+        private val bitmapManager = BitmapManager(sourceFolder, contentResolver)
+        private lateinit var engineScope: CoroutineScope
         private lateinit var surfaceScope: CoroutineScope
+        private var initialLoadRoutine: Job? = null
         private var drawRoutine: Job? = null
         private val visibilityChange = Channel<Boolean>(Channel.CONFLATED)
 
-        init {
-            // Apparently, in SAF the uri to list a folder's children is not the same uri as the
-            // folder itself ???. It has an extra /children at the end. Okay Google, okay.
-            val sourceFolderChildrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(
-                this.sourceFolder,
-                DocumentsContract.getTreeDocumentId(this.sourceFolder)
-            )
+        override fun onCreate(surfaceHolder: SurfaceHolder?) {
+            super.onCreate(surfaceHolder)
+            engineScope = CoroutineScope(Dispatchers.Main)
 
-            val projection = arrayOf(
-                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
-//                DocumentsContract.Document.COLUMN_DISPLAY_NAME,
-                DocumentsContract.Document.COLUMN_MIME_TYPE
-            )
-            // This doesn't work, because Google
-//            val selection = "${DocumentsContract.Document.COLUMN_MIME_TYPE} LIKE ?"
-//            val selectionArgs = arrayOf("image/*")
-            // Does this work? Probably not
-//            val sortBy = "${DocumentsContract.Document.COLUMN_DOCUMENT_ID} ASC"
-
-            contentResolver.query(
-                sourceFolderChildrenUri,
-                projection,
-                null,
-                null,
-                null
-            )?.use {
-                val idColumn =
-                    it.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
-//                val nameColumn =
-//                    it.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
-                val mimeColumn =
-                    it.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_MIME_TYPE)
-
-                Log.d("FWallpaper", "Found ${it.count} files.")
-                photoIds.clear()
-                while (it.moveToNext()) {
-                    val photoId = it.getString(idColumn)
-//                    val photoName = it.getString(nameColumn)
-                    val photoMime = it.getString(mimeColumn)
-
-                    if (photoMime.startsWith("image/")) {
-//                        Log.d("FWallpaper", "Found photo $photoName of type $photoMime.")
-                        photoIds.add(photoId)
-                    }
-                }
+            initialLoadRoutine = engineScope.launch(Dispatchers.IO) {
+                bitmapManager.loadPhotoIds()
+                bitmapManager.loadNextBitmaps(gridSize.width * gridSize.height, null)
             }
+        }
+
+        override fun onDestroy() {
+            if (engineScope.isActive) {
+                engineScope.cancel()
+            }
+
+            super.onDestroy()
         }
 
         override fun onSurfaceCreated(holder: SurfaceHolder) {
@@ -128,10 +92,11 @@ class FWallpaperService : WallpaperService() {
 
         override fun onSurfaceDestroyed(holder: SurfaceHolder?) {
             Log.d("FWallpaper", "onSurfaceDestroyed called")
-            super.onSurfaceDestroyed(holder)
             if (surfaceScope.isActive) {
                 surfaceScope.cancel()
             }
+
+            super.onSurfaceDestroyed(holder)
         }
 
         override fun onSurfaceChanged(holder: SurfaceHolder?, format: Int, width: Int, height: Int) {
@@ -139,6 +104,7 @@ class FWallpaperService : WallpaperService() {
                 "FWallpaper",
                 "onSurfaceChanged called with format: $format, width: $width, height: $height. Creating ${holder?.isCreating}"
             )
+//            Log.d("FWallpaper", "Desired size: ${desiredMinimumHeight}x${desiredMinimumWidth}")
             super.onSurfaceChanged(holder, format, width, height)
         }
 
@@ -147,29 +113,23 @@ class FWallpaperService : WallpaperService() {
             Log.d("FWallpaper", "onSurfaceRedrawNeeded called with holder: $holder. Creating: ${holder?.isCreating}")
             super.onSurfaceRedrawNeeded(holder)
             if (holder == null) return
-            drawRoutine?.cancel()
 
-            runBlocking {
-                if (bitmaps.size != gridSize.width * gridSize.height) {
-                    bitmaps.clear()
-                    loadBitmaps(bitmaps)
+            if (initialLoadRoutine != null) {
+                initialLoadRoutine?.invokeOnCompletion {
+                    drawRoutine = surfaceScope.launch {
+                        draw(holder)
+                        drawingLoop(holder)
+                    }
                 }
-                draw(holder)
-            }
+                initialLoadRoutine = null
+            } else {
+                drawRoutine?.cancel()
 
-            drawRoutine = surfaceScope.launch {
-                do {
-                    suspendWhileInvisible()
-                    Log.d("FWallpaper", "Preparing to load next bitmaps.")
-                    nextBitmaps.clear()
-                    loadBitmaps(nextBitmaps)
-
-                    delay(delaySeconds.seconds)
-
-                    suspendWhileInvisible()
-                    bitmaps = nextBitmaps.also { nextBitmaps = bitmaps }
+                runBlocking {
                     draw(holder)
-                } while (isActive)
+                }
+
+                drawRoutine = surfaceScope.launch { drawingLoop(holder) }
             }
         }
 
@@ -188,36 +148,18 @@ class FWallpaperService : WallpaperService() {
             }
         }
 
-        private fun getBitmapFromUri(uri: Uri): Bitmap? {
-            val parcelFileDescriptor: ParcelFileDescriptor =
-                applicationContext.contentResolver
-                    .openFileDescriptor(uri, "r") ?: return null
+        @ExperimentalTime
+        private suspend fun drawingLoop(holder: SurfaceHolder) {
+            do {
+                suspendWhileInvisible()
+                Log.d("FWallpaper", "Preparing to load next bitmaps.")
+                bitmapManager.loadNextBitmaps(gridSize.width * gridSize.height, null)
 
-            parcelFileDescriptor.use {
-                val fileDescriptor: FileDescriptor = it.fileDescriptor
-                return BitmapFactory.decodeFileDescriptor(fileDescriptor)
-            }
-        }
+                delay(delaySeconds.seconds)
 
-        private fun getNextBitmap(): Bitmap? {
-            if (!iterator.hasNext()) {
-                if (photoIds.size > 0) {
-                    iterator = photoIds.iterator()
-                } else {
-                    return null
-                }
-            }
-
-            val photoUri = DocumentsContract.buildDocumentUriUsingTree(this.sourceFolder, iterator.next())
-            return getBitmapFromUri(photoUri)
-        }
-
-        private suspend fun loadBitmaps(outBitmaps: MutableList<Bitmap?>) {
-            for (i in 0 until gridSize.height * gridSize.width) {
-                if (coroutineContext.isActive) {
-                    outBitmaps.add(getNextBitmap())
-                }
-            }
+                suspendWhileInvisible()
+                draw(holder)
+            } while (coroutineContext.isActive)
         }
 
         private fun getGridRect(canvasSize: Size, gridPos: Point): Rect {
@@ -231,29 +173,24 @@ class FWallpaperService : WallpaperService() {
             val dstRect = getGridRect(Size(canvas.width, canvas.height), gridPos)
 
             val crop = { cropFocus: (Int, Int) -> Int ->
-                val orientation = if (bitmap.height > bitmap.width) {
-                    Orientation.Portrait
+                val dstAspectRatio = dstRect.width().toFloat() / dstRect.height().toFloat()
+                val bitmapAspectRatio = bitmap.width.toFloat() / bitmap.height.toFloat()
+
+                val srcRect = if (dstAspectRatio > bitmapAspectRatio) {
+                    // If destination is wider than bitmap, recalculate height to "zoom in".
+                    val newSrcHeight = (bitmap.width / dstAspectRatio).toInt()
+                    val newTop = cropFocus(bitmap.height, newSrcHeight)
+
+                    Rect(0, newTop, bitmap.width, newTop + newSrcHeight)
                 } else {
-                    Orientation.Landscape
+                    // If destination is taller than bitmap, recalculate width "zoom in".
+                    val newSrcWidth = (bitmap.height * dstAspectRatio).toInt()
+                    val newLeft = cropFocus(bitmap.width, newSrcWidth)
+
+                    Rect(newLeft, 0, newLeft + newSrcWidth, bitmap.height)
                 }
 
-                when (orientation) {
-                    Orientation.Landscape -> {
-                        val aspectRatio = dstRect.width().toFloat() / dstRect.height().toFloat()
-                        val newSrcWidth = (bitmap.height * aspectRatio).toInt()
-                        val newLeft = cropFocus(bitmap.width, newSrcWidth)
-
-                        val srcRect = Rect(newLeft, 0, newLeft + newSrcWidth, bitmap.height)
-                    }
-                    Orientation.Portrait -> {
-                        val aspectRatio = dstRect.width().toFloat() / dstRect.height().toFloat()
-                        val newSrcHeight = (bitmap.width / aspectRatio).toInt()
-                        val newTop = cropFocus(bitmap.height, newSrcHeight)
-
-                        val srcRect = Rect(0, newTop, bitmap.width, newTop + newSrcHeight)
-                        canvas.drawBitmap(bitmap, srcRect, dstRect, null)
-                    }
-                }
+                canvas.drawBitmap(bitmap, srcRect, dstRect, null)
             }
 
             val drawWithMatrix = { scaleToFit: Matrix.ScaleToFit ->
@@ -275,13 +212,7 @@ class FWallpaperService : WallpaperService() {
 
         private suspend fun draw(holder: SurfaceHolder) {
             Log.d("FWallpaper", "draw called")
-            if (bitmaps.size != gridSize.width * gridSize.height) {
-                Log.d(
-                    "FWallaper",
-                    "Bitmap size was unexpected ${bitmaps.size}. Expected ${gridSize.width * gridSize.height}"
-                )
-                return
-            }
+
             val canvas = try {
                 val c = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                     holder.lockHardwareCanvas()
@@ -290,7 +221,7 @@ class FWallpaperService : WallpaperService() {
                 }
 
                 if (c == null) {
-                    Log.d("FWallaper", "Couldn't lock canvas")
+                    Log.d("FWallpaper", "Couldn't lock canvas")
                     return
                 }
                 c
@@ -300,11 +231,16 @@ class FWallpaperService : WallpaperService() {
             }
 
             Log.d("FWallpaper", "Drawing with canvas ${canvas.width}x${canvas.height}")
+            val bitmaps = bitmapManager.getBitmaps();
             try {
+                canvas.drawRGB(255, 255, 255)
+
                 for (i in 0 until gridSize.width) {
                     for (j in 0 until gridSize.height) {
                         if (coroutineContext.isActive) {
-                            val bitmap = bitmaps[i * gridSize.height + j]
+                            val index = i * gridSize.height + j
+                            val bitmap = if (index < bitmaps.size) bitmaps[index] else null
+
                             if (bitmap != null) {
                                 drawBitmap(canvas, bitmap, Point(i, j))
                             } else {
