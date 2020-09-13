@@ -1,17 +1,47 @@
-<PreferenceScreen
-        xmlns:app="http://schemas.android.com/apk/res-auto" xmlns:android="http://schemas.android.com/apk/res/android">
-    <SeekBarPreference
-            app:title="Delay"
-            app:summary="Delay between switching screens"
-            app:defaultValue="1"
-            app:key="Delay"
-            app:showSeekBarValue="true"
-            app:min="1"
-            android:max="120"/>
-    <Preference
-        app:title = "Choose Source"
-        app:key = "Source Folder">
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    </Preference>
+    <Preference
+        app:key="source_folder"
+        app:title="@string/preferences_source_folder_title" />
+
+    <SeekBarPreference
+        android:max="120"
+        app:defaultValue="1"
+        app:key="delay"
+        app:min="1"
+        app:showSeekBarValue="true"
+        app:summary="@string/preferences_delay_summary"
+        app:title="@string/preferences_delay_title" />
+
+    <DropDownPreference
+        app:key="scale_type"
+        app:title="@string/preferences_scale_title"
+        app:defaultValue="MATRIX_CENTER"
+        app:entries="@array/preferences_scale_mode_entries"
+        app:entryValues="@array/preferences_scale_mode_values"
+        app:useSimpleSummaryProvider="true"/>
+
+    <PreferenceCategory app:title="@string/preferences_grid_title">
+
+        <SeekBarPreference
+            android:max="10"
+            app:defaultValue="2"
+            app:key="grid_width"
+            app:min="1"
+            app:showSeekBarValue="true"
+            app:summary="@string/preferences_grid_width_summary"
+            app:title="@string/preferences_grid_width_title" />
+
+        <SeekBarPreference
+            android:max="10"
+            app:defaultValue="4"
+            app:key="grid_height"
+            app:min="1"
+            app:showSeekBarValue="true"
+            app:summary="@string/preferences_grid_height_summary"
+            app:title="@string/preferences_grid_height_title" />
+
+    </PreferenceCategory>
 
 </PreferenceScreen>

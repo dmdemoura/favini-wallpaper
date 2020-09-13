@@ -39,26 +39,26 @@ class SettingsActivity : AppCompatActivity() {
 
                     val prefStorage = PreferenceManager.getDefaultSharedPreferences(context)
                     val prefEditor = prefStorage.edit()
-                    prefEditor.putString("Source Folder", uri.toString())
+                    prefEditor.putString("source_folder", uri.toString())
                     prefEditor.putString("Source Folder Name", file?.name)
                     prefEditor.apply()
 
-                    findPreference<Preference>("Source Folder")?.summary = uri.toString()
+                    findPreference<Preference>("source_folder")?.summary = uri.toString()
                 }
             }
         }
 
         override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
             setPreferencesFromResource(R.xml.root_preferences, rootKey)
-            val pref = findPreference<Preference>("Source Folder")
+            val pref = findPreference<Preference>("source_folder")
 
-            pref?.onPreferenceClickListener = Preference.OnPreferenceClickListener { preference: Preference ->
+            pref?.onPreferenceClickListener = Preference.OnPreferenceClickListener { _: Preference ->
                 openSourceFolder?.launch(Uri.EMPTY)
                 true
             }
 
             val prefStorage = PreferenceManager.getDefaultSharedPreferences(context)
-            pref?.summary = prefStorage.getString("Source Folder", "No folder selected")
+            pref?.summary = prefStorage.getString("source_folder", "No folder selected")
         }
     }
 }

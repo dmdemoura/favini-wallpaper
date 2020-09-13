@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Settings Activity Title -->
+    <string name="title_activity_settings">Configurações</string>
+
+    <!-- Preferences -->
+
+    <!-- Grid Preferences -->
+    <string name="preferences_grid_title">Matriz</string>
+
+    <string name="preferences_grid_width_title">Largura</string>
+    <string name="preferences_grid_width_summary">Largura da matriz (número de fotos).</string>
+
+    <string name="preferences_grid_height_title">Altura</string>
+    <string name="preferences_grid_height_summary">Altura da matriz (número de fotos).</string>
+
+    <!-- Delay Preference -->
+    <string name="preferences_delay_title">Tempo por Página.</string>
+    <string name="preferences_delay_summary">Tempo em segundos para mostrar cada página.</string>
+    <string name="preferences_source_folder_title">Escolher pasta fonte</string>
+</resources>

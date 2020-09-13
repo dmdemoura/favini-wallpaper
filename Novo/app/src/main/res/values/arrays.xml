@@ -1,12 +1,22 @@
 <resources>
-    <!-- Reply Preference -->
-    <string-array name="reply_entries">
-        <item>Reply</item>
-        <item>Reply to all</item>
+    <!-- Scale Preference -->
+    <string-array name="preferences_scale_mode_entries">
+        <item>Crop (focus start)</item>
+        <item>Crop (focus center)</item>
+        <item>Crop (focus end)</item>
+        <item>Fit (align start)</item>
+        <item>Fit (align center)</item>
+        <item>Fit (align end)</item>
+        <item>Stretch to fill</item>
     </string-array>
 
-    <string-array name="reply_values">
-        <item>reply</item>
-        <item>reply_all</item>
+    <string-array name="preferences_scale_mode_values">
+        <item>CROP_START</item>
+        <item>CROP_CENTER</item>
+        <item>CROP_END</item>
+        <item>MATRIX_START</item>
+        <item>MATRIX_CENTER</item>
+        <item>MATRIX_END</item>
+        <item>MATRIX_FILL</item>
     </string-array>
 </resources>
