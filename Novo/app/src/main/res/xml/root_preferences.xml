@@ -7,7 +7,7 @@
 
     <SeekBarPreference
         android:max="120"
-        app:defaultValue="1"
+        app:defaultValue="@integer/default_prefs_delay"
         app:key="delay"
         app:min="1"
         app:showSeekBarValue="true"
@@ -17,7 +17,7 @@
     <DropDownPreference
         app:key="scale_type"
         app:title="@string/preferences_scale_title"
-        app:defaultValue="MATRIX_CENTER"
+        app:defaultValue="@string/default_prefs_scale_type"
         app:entries="@array/preferences_scale_mode_entries"
         app:entryValues="@array/preferences_scale_mode_values"
         app:useSimpleSummaryProvider="true"/>
@@ -26,7 +26,7 @@
 
         <SeekBarPreference
             android:max="10"
-            app:defaultValue="2"
+            app:defaultValue="@integer/default_prefs_grid_width"
             app:key="grid_width"
             app:min="1"
             app:showSeekBarValue="true"
@@ -35,7 +35,7 @@
 
         <SeekBarPreference
             android:max="10"
-            app:defaultValue="4"
+            app:defaultValue="@integer/default_prefs_grid_height"
             app:key="grid_height"
             app:min="1"
             app:showSeekBarValue="true"

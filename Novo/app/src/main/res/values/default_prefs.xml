@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <integer name="default_prefs_delay">1</integer>
+    <string name="default_prefs_scale_type" translatable="false">CROP_CENTER</string>
+    <integer name="default_prefs_grid_width">2</integer>
+    <integer name="default_prefs_grid_height">4</integer>
+</resources>

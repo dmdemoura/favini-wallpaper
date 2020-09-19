@@ -1,93 +1,132 @@
 package one.demouraLima.fwallpaper
 
-import android.graphics.*
+import android.content.SharedPreferences
+import android.graphics.Bitmap
+import android.graphics.Rect
 import android.net.Uri
 import android.service.wallpaper.WallpaperService
 import android.util.Log
 import android.util.Size
 import android.view.SurfaceHolder
-import androidx.core.graphics.toRectF
 import androidx.preference.PreferenceManager
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.sendBlocking
 import kotlin.coroutines.coroutineContext
+import kotlin.time.Duration
 import kotlin.time.ExperimentalTime
 import kotlin.time.seconds
 
+@ExperimentalTime
 class FWallpaperService : WallpaperService() {
-    enum class ScaleType {
-        CROP_START,
-        CROP_CENTER,
-        CROP_END,
-        MATRIX_FILL,
-        MATRIX_START,
-        MATRIX_CENTER,
-        MATRIX_END
-    }
-
-    enum class Orientation {
-        Landscape,
-        Portrait
-    }
 
     override fun onCreateEngine(): Engine {
-        val prefStorage = PreferenceManager.getDefaultSharedPreferences(applicationContext)
-        val folder = prefStorage.getString("source_folder", null) ?: return BlankEngine()
-        val width = prefStorage.getInt("grid_width", 2)
-        val height = prefStorage.getInt("grid_height", 4)
-        val delay = prefStorage.getInt("delay", 1)
-        val scaleType = kotlin.runCatching { ScaleType.valueOf(prefStorage.getString("scale_type", null)!!) }
-            .getOrDefault(ScaleType.MATRIX_CENTER)
-
-        val uri = try {
-            Uri.parse(folder)
-        } catch (e: Exception) {
-            Log.w("FWallpaper", "Failed to parse uri due to ${e.message}")
-            return BlankEngine()
-        }
-
-        return FEngine(uri, Size(width, height), scaleType, delay)
+        return FEngine()
     }
 
-    // Used when there are no images to display.
-    inner class BlankEngine() : Engine() {}
+    @ExperimentalTime
+    private fun getPrefDelay(preferences: SharedPreferences): Duration {
+        return preferences.getInt("delay",
+            applicationContext.resources.getInteger(R.integer.default_prefs_delay)
+        ).seconds
+    }
 
-    inner class FEngine(
-        sourceFolder: Uri,
-        private val gridSize: Size,
-        private val scaleType: ScaleType,
-        private val delaySeconds: Int
-    ) : Engine() {
-        private val bitmapManager = BitmapManager(sourceFolder, contentResolver)
-        private lateinit var engineScope: CoroutineScope
+    private fun getPrefSize(preferences: SharedPreferences): Size {
+        return Size(
+            preferences.getInt("grid_width",
+                applicationContext.resources.getInteger(R.integer.default_prefs_grid_height)),
+            preferences.getInt("grid_height",
+                applicationContext.resources.getInteger(R.integer.default_prefs_grid_height)))
+    }
+
+    private fun getPrefScaleType(preferences: SharedPreferences): ScaleType {
+        return ScaleType.valueOf(preferences.getString("scale_type",
+            applicationContext.resources.getString(R.string.default_prefs_scale_type))!!)
+    }
+
+    private fun getPrefSourceFolder(preferences: SharedPreferences): Uri? {
+        val folder = preferences.getString("source_folder", null)
+
+        return try {
+            Uri.parse(folder)
+        } catch (e: Exception) {
+            Log.e("FWallpaper", "Failed to parse uri due to ${e.message}")
+            return null
+        }
+    }
+
+    abstract class ReloadType {
+        class None : ReloadType() {}
+        class LoadMoreBitmaps(val count: Int) : ReloadType() {}
+        class RewindBitmaps(val count: Int) : ReloadType() {}
+        class Full : ReloadType() {}
+    }
+
+    inner class FEngine : Engine() {
+        private var gridSize: Size
+        private var scaleType: ScaleType
+        private var delay: Duration
+        private var bitmapManager: BitmapManager? = null
+
         private lateinit var surfaceScope: CoroutineScope
-        private var initialLoadRoutine: Job? = null
+        private var initialLoadRoutine: Deferred<List<Bitmap?>>? = null
         private var drawRoutine: Job? = null
         private val visibilityChange = Channel<Boolean>(Channel.CONFLATED)
 
-        override fun onCreate(surfaceHolder: SurfaceHolder?) {
-            super.onCreate(surfaceHolder)
-            engineScope = CoroutineScope(Dispatchers.Main)
+        private val coroutineExceptionHandler = CoroutineExceptionHandler { _, ex ->
+            Log.e("FWallpaper", "Coroutine exception: ${ex.message}", ex)
+        }
 
-            initialLoadRoutine = engineScope.launch(Dispatchers.IO) {
-                bitmapManager.loadPhotoIds()
-                bitmapManager.loadNextBitmaps(gridSize.width * gridSize.height, null)
+        init {
+            val preferences = PreferenceManager.getDefaultSharedPreferences(applicationContext)
+            gridSize = getPrefSize(preferences)
+            delay = getPrefDelay(preferences)
+            scaleType = getPrefScaleType(preferences)
+            getPrefSourceFolder(preferences)?.also {
+                bitmapManager = BitmapManager(it , contentResolver)
             }
         }
 
-        override fun onDestroy() {
-            if (engineScope.isActive) {
-                engineScope.cancel()
+        private fun reloadPreferences(): ReloadType {
+            val preferences = PreferenceManager.getDefaultSharedPreferences(applicationContext)
+            delay = getPrefDelay(preferences)
+            scaleType = getPrefScaleType(preferences)
+
+            var reloadType: ReloadType = ReloadType.None()
+            gridSize = getPrefSize(preferences).also {
+                // If grid changed to a smaller size no need to reload
+                val oldCount = gridSize.width * gridSize.height
+                val newCount = it.width * it.height
+                if (newCount > oldCount) {
+                    reloadType = ReloadType.LoadMoreBitmaps(newCount - oldCount)
+                } else if (newCount < oldCount) {
+                    reloadType = ReloadType.RewindBitmaps(oldCount - newCount)
+                }
             }
 
-            super.onDestroy()
+            getPrefSourceFolder(preferences)?.also {
+                if (bitmapManager?.sourceFolder != it) {
+                    bitmapManager = BitmapManager(it , contentResolver)
+                    reloadType = ReloadType.Full()
+                }
+            }
+
+            return reloadType
         }
 
         override fun onSurfaceCreated(holder: SurfaceHolder) {
             Log.d("FWallpaper", "onSurfaceCreated called")
             super.onSurfaceCreated(holder)
             surfaceScope = CoroutineScope(Dispatchers.Main)
+
+            initialLoadRoutine = bitmapManager?.run {
+                surfaceScope.async(Dispatchers.IO) {
+                    loadPhotoIds()
+                    loadNextBitmaps(gridSize.width * gridSize.height,
+                        getGridRectSize(holder.surfaceFrame, gridSize),
+                        null)
+                }
+            }
         }
 
         override fun onSurfaceDestroyed(holder: SurfaceHolder?) {
@@ -114,22 +153,25 @@ class FWallpaperService : WallpaperService() {
             super.onSurfaceRedrawNeeded(holder)
             if (holder == null) return
 
-            if (initialLoadRoutine != null) {
-                initialLoadRoutine?.invokeOnCompletion {
-                    drawRoutine = surfaceScope.launch {
-                        draw(holder)
-                        drawingLoop(holder)
-                    }
+            if (initialLoadRoutine != null && drawRoutine == null) {
+                drawRoutine = surfaceScope.launch(coroutineExceptionHandler) {
+                    val bitmaps = initialLoadRoutine!!.await()
+                    initialLoadRoutine = null
+                    drawGrid(holder, applicationContext, bitmaps, gridSize, scaleType)
+                    drawingLoop(holder)
                 }
-                initialLoadRoutine = null
-            } else {
-                drawRoutine?.cancel()
+            } else if (initialLoadRoutine == null) {
+                drawRoutine?.let {
+                    it.cancel()
+                    drawRoutine = null
+                    Log.d("FWallpaper", "Cancelled draw routine");
+                }
 
                 runBlocking {
-                    draw(holder)
+                    drawGrid(holder, applicationContext, bitmapManager?.getBitmaps(), gridSize, scaleType)
                 }
 
-                drawRoutine = surfaceScope.launch { drawingLoop(holder) }
+                drawRoutine = surfaceScope.launch(coroutineExceptionHandler) { drawingLoop(holder) }
             }
         }
 
@@ -139,120 +181,74 @@ class FWallpaperService : WallpaperService() {
             visibilityChange.sendBlocking(visible)
         }
 
-        private suspend fun suspendWhileInvisible() {
+        private suspend fun suspendWhileInvisible(): Boolean {
             if (visibilityChange.poll() == false) {
                 do {
                     Log.d("FWallpaper", "Receiving visible false, will wait for true")
                     val visible = visibilityChange.receive()
+                    Log.d("FWallpaper", " Got visible: $visible")
                 } while (!visible)
+                Log.d("FWallpaper", "Resuming")
+                return true
             }
+            return false
         }
 
         @ExperimentalTime
         private suspend fun drawingLoop(holder: SurfaceHolder) {
             do {
-                suspendWhileInvisible()
+                if (suspendWhileInvisible()) {
+                    if (reloadPreferences() is ReloadType.Full) {
+                        Log.d("FWallpaper", "Full reload.")
+                        bitmapManager?.loadPhotoIds()
+                    }
+                }
+
                 Log.d("FWallpaper", "Preparing to load next bitmaps.")
-                bitmapManager.loadNextBitmaps(gridSize.width * gridSize.height, null)
 
-                delay(delaySeconds.seconds)
+                // Keep a local, as the member variable might change between loading and drawing.
+                var gridSize = this.gridSize
+                var bitmaps = bitmapManager?.loadNextBitmaps(
+                    gridSize.width * gridSize.height,
+                    getGridRectSize(surfaceHolder.surfaceFrame, gridSize),
+                    null
+                )
 
-                suspendWhileInvisible()
-                draw(holder)
-            } while (coroutineContext.isActive)
-        }
+                Log.d("FWallpaper", "Loaded next bitmaps.")
+                delay(delay)
 
-        private fun getGridRect(canvasSize: Size, gridPos: Point): Rect {
-            val rectSize = Size(canvasSize.width / gridSize.width, canvasSize.height / gridSize.height)
-            val rectStart = Point(rectSize.width * gridPos.x, rectSize.height * gridPos.y)
+                if (suspendWhileInvisible()) { // If we go invisible.
+                    val reloadType = reloadPreferences() // Reload prefs, and check what needs to be fixed.
 
-            return Rect(rectStart.x, rectStart.y, rectStart.x + rectSize.width, rectStart.y + rectSize.height)
-        }
-
-        private fun drawBitmap(canvas: Canvas, bitmap: Bitmap, gridPos: Point) {
-            val dstRect = getGridRect(Size(canvas.width, canvas.height), gridPos)
-
-            val crop = { cropFocus: (Int, Int) -> Int ->
-                val dstAspectRatio = dstRect.width().toFloat() / dstRect.height().toFloat()
-                val bitmapAspectRatio = bitmap.width.toFloat() / bitmap.height.toFloat()
-
-                val srcRect = if (dstAspectRatio > bitmapAspectRatio) {
-                    // If destination is wider than bitmap, recalculate height to "zoom in".
-                    val newSrcHeight = (bitmap.width / dstAspectRatio).toInt()
-                    val newTop = cropFocus(bitmap.height, newSrcHeight)
-
-                    Rect(0, newTop, bitmap.width, newTop + newSrcHeight)
-                } else {
-                    // If destination is taller than bitmap, recalculate width "zoom in".
-                    val newSrcWidth = (bitmap.height * dstAspectRatio).toInt()
-                    val newLeft = cropFocus(bitmap.width, newSrcWidth)
-
-                    Rect(newLeft, 0, newLeft + newSrcWidth, bitmap.height)
-                }
-
-                canvas.drawBitmap(bitmap, srcRect, dstRect, null)
-            }
-
-            val drawWithMatrix = { scaleToFit: Matrix.ScaleToFit ->
-                val srcRect = Rect(0, 0, bitmap.width, bitmap.height)
-                val scaleMatrix = Matrix().apply { setRectToRect(srcRect.toRectF(), dstRect.toRectF(), scaleToFit) }
-                canvas.drawBitmap(bitmap, scaleMatrix, null)
-            }
-
-            when (scaleType) {
-                ScaleType.CROP_START -> crop() { _, _ -> 0 }
-                ScaleType.CROP_CENTER -> crop() { oldVal, newVal -> (oldVal - newVal) / 2 }
-                ScaleType.CROP_END -> crop() { oldVal, newVal -> oldVal - newVal }
-                ScaleType.MATRIX_START -> drawWithMatrix(Matrix.ScaleToFit.START)
-                ScaleType.MATRIX_CENTER -> drawWithMatrix(Matrix.ScaleToFit.CENTER)
-                ScaleType.MATRIX_END -> drawWithMatrix(Matrix.ScaleToFit.END)
-                ScaleType.MATRIX_FILL -> drawWithMatrix(Matrix.ScaleToFit.FILL)
-            }
-        }
-
-        private suspend fun draw(holder: SurfaceHolder) {
-            Log.d("FWallpaper", "draw called")
-
-            val canvas = try {
-                val c = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                    holder.lockHardwareCanvas()
-                } else {
-                    holder.lockCanvas()
-                }
-
-                if (c == null) {
-                    Log.d("FWallpaper", "Couldn't lock canvas")
-                    return
-                }
-                c
-            } catch (e: Exception) {
-                Log.e("FWallpaper", "Failed to lock canvas due to ${e.message}")
-                return
-            }
-
-            Log.d("FWallpaper", "Drawing with canvas ${canvas.width}x${canvas.height}")
-            val bitmaps = bitmapManager.getBitmaps();
-            try {
-                canvas.drawRGB(255, 255, 255)
-
-                for (i in 0 until gridSize.width) {
-                    for (j in 0 until gridSize.height) {
-                        if (coroutineContext.isActive) {
-                            val index = i * gridSize.height + j
-                            val bitmap = if (index < bitmaps.size) bitmaps[index] else null
-
-                            if (bitmap != null) {
-                                drawBitmap(canvas, bitmap, Point(i, j))
-                            } else {
-                                val rect = getGridRect(Size(canvas.width, canvas.height), Point(i, j))
-                                canvas.drawText("Missing Image", rect.left.toFloat(), rect.exactCenterY(), Paint())
-                            }
+                    // Update grid size
+                    gridSize = this.gridSize
+                    when (reloadType) {
+                        is ReloadType.Full -> {
+                            bitmapManager?.loadPhotoIds()
+                            bitmapManager?.loadNextBitmaps(
+                                gridSize.width * gridSize.height,
+                                getGridRectSize(surfaceHolder.surfaceFrame, gridSize),
+                                null)
+                        }
+                        is ReloadType.LoadMoreBitmaps -> {
+                            // Grid size was increased.
+                            bitmaps = bitmapManager?.loadMoreBitmaps(
+                                reloadType.count,
+                                getGridRectSize(surfaceHolder.surfaceFrame, gridSize),
+                                null)
+                        }
+                        is ReloadType.RewindBitmaps -> {
+                            // Grid size was reduced, re add some of the loaded bitmaps to nextBitmaps.
+                            bitmapManager?.rewind(reloadType.count)
                         }
                     }
                 }
-            } finally {
-                holder.unlockCanvasAndPost(canvas)
-            }
+                drawGrid(holder, applicationContext, bitmaps, gridSize, scaleType)
+            } while (coroutineContext.isActive)
         }
     }
+}
+
+private fun getGridRectSize(canvasSize: Rect, gridSize: Size): Size {
+    return Size(canvasSize.width() / gridSize.width, canvasSize.height() / gridSize.height)
 }
