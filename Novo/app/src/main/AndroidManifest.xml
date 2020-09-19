@@ -1,16 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-          package="one.demouraLima.fwallpaper">
+          package="one.demoura.lima.fwallpaper">
 
+    <uses-feature
+        android:name="android.software.live_wallpaper"
+        android:required="true" />
     <application
             android:allowBackup="true"
             android:icon="@mipmap/ic_launcher"
             android:label="@string/app_name"
             android:roundIcon="@mipmap/ic_launcher_round"
             android:supportsRtl="true"
-            android:theme="@style/AppTheme">
+            android:theme="@style/AppTheme"
+            android:fullBackupContent="@xml/backup_descriptor">
         <service
-                android:name="one.demouraLima.fwallpaper.FWallpaperService"
+                android:name="one.demoura.lima.fwallpaper.FWallpaperService"
                 android:label="@string/app_name"
                 android:enabled="true"
                 android:permission="android.permission.BIND_WALLPAPER">
@@ -26,7 +30,7 @@
         </service>
         <!-- android:exported="true" is required for the settings icon to show in the wallpaper picker-->
         <activity
-                android:name=".SettingsActivity"
+                android:name="one.demoura.lima.fwallpaper.SettingsActivity"
                 android:exported="true"
                 android:label="@string/app_name">
             <intent-filter>
@@ -36,9 +40,4 @@
             </intent-filter>
         </activity>
     </application>
-    <uses-feature
-            android:name="android.software.live_wallpaper"
-            android:required="true"
-    />
-    <!--VER COISO DO PERMISSION -->
 </manifest>

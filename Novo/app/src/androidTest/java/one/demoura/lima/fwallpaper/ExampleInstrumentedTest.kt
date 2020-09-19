@@ -1,4 +1,4 @@
-package one.demouraLima.fwallpaper
+package one.demoura.lima.fwallpaper
 
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -19,6 +19,6 @@ class ExampleInstrumentedTest {
     fun useAppContext() {
         // Context of the app under test.
         val appContext = InstrumentationRegistry.getInstrumentation().targetContext
-        assertEquals("one.demouraLima.fwallpaper", appContext.packageName)
+        assertEquals("one.demouraLima.lima.fwallpaper", appContext.packageName)
     }
 }

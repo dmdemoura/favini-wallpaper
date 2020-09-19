@@ -1,4 +1,4 @@
-package one.demouraLima.fwallpaper
+package one.demoura.lima.fwallpaper
 
 import android.content.ContentResolver
 import android.graphics.Bitmap
@@ -11,7 +11,6 @@ import android.util.Size
 import kotlinx.coroutines.isActive
 import java.io.FileDescriptor
 import kotlin.coroutines.coroutineContext
-import kotlin.math.max
 import kotlin.math.min
 
 class BitmapManager(

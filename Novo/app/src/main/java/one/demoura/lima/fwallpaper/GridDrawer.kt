@@ -1,20 +1,15 @@
-package one.demouraLima.fwallpaper
+package one.demoura.lima.fwallpaper
 
 import android.content.Context
 import android.graphics.*
-import android.text.StaticLayout
 import android.util.Log
 import android.util.Size
-import android.util.TypedValue
 import android.view.Gravity
 import android.view.SurfaceHolder
-import android.view.View
-import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.graphics.toRectF
 import androidx.core.graphics.withTranslation
 import kotlinx.coroutines.isActive
-import java.time.format.TextStyle
 import kotlin.coroutines.coroutineContext
 
 enum class ScaleType {
@@ -117,7 +112,7 @@ suspend fun drawGrid(holder: SurfaceHolder, ctx: Context, bitmaps: List<Bitmap?>
 
         if (bitmaps == null) {
             val rect = Rect(0, 0, canvas.width, canvas.height)
-            canvas.drawTextCentered(ctx, "No images: Set source folder", rect)
+            canvas.drawTextCentered(ctx, ctx.resources.getString(R.string.canvas_error_missing_source_folder), rect)
             return
         }
 
@@ -131,7 +126,7 @@ suspend fun drawGrid(holder: SurfaceHolder, ctx: Context, bitmaps: List<Bitmap?>
                         drawBitmap(canvas, bitmap, Point(i, j), gridSize, scaleType)
                     } else {
                         val rect = getGridRect(Size(canvas.width, canvas.height), Point(i, j), gridSize)
-                        canvas.drawTextCentered(ctx, "Missing Image", rect)
+                        canvas.drawTextCentered(ctx, ctx.resources.getString(R.string.canvas_error_missing_image), rect)
                     }
                 }
             }

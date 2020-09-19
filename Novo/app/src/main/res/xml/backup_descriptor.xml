@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- We don't save any data other than a few shared prefs -->
+    <include domain="sharedpref" path="."/>
+</full-backup-content>

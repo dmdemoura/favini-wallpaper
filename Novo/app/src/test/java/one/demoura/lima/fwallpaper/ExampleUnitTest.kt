@@ -1,4 +1,4 @@
-package one.demouraLima.fwallpaper
+package one.demoura.lima.fwallpaper
 
 import org.junit.Test
 

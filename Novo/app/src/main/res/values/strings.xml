@@ -1,5 +1,10 @@
 <resources>
     <string name="app_name" translatable="false">Favini Wallpaper</string>
+
+    <!-- Canvas Errors -->
+    <string name="canvas_error_missing_source_folder">No Images: Set source folder.</string>
+    <string name="canvas_error_missing_image">Failed to load image.</string>
+
     <!-- Settings Activity Title -->
     <string name="title_activity_settings">Settings</string>
 
@@ -21,4 +26,7 @@
 
     <!-- Scale Preference -->
     <string name="preferences_scale_title">Scale type</string>
+
+    <!-- Set Wallpaper Button -->
+    <string name="preferences_set_wallpaper_btn">Set as wallpaper</string>
 </resources>

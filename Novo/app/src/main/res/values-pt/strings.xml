@@ -18,4 +18,8 @@
     <string name="preferences_delay_title">Tempo por Página.</string>
     <string name="preferences_delay_summary">Tempo em segundos para mostrar cada página.</string>
     <string name="preferences_source_folder_title">Escolher pasta fonte</string>
+    <string name="preferences_scale_title">Modo de escala</string>
+    <string name="canvas_error_missing_source_folder">Sem imagens: Configure a pasta fonte.</string>
+    <string name="canvas_error_missing_image">Falha em carregar imagem.</string>
+    <string name="preferences_set_wallpaper_btn">Definir como papel de parede</string>
 </resources>

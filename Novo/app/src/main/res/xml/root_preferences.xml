@@ -6,7 +6,7 @@
         app:title="@string/preferences_source_folder_title" />
 
     <SeekBarPreference
-        android:max="120"
+        android:max="30"
         app:defaultValue="@integer/default_prefs_delay"
         app:key="delay"
         app:min="1"

@@ -1,6 +1,7 @@
-package one.demouraLima.fwallpaper
+package one.demoura.lima.fwallpaper
 
 import android.content.SharedPreferences
+import android.content.UriPermission
 import android.graphics.Bitmap
 import android.graphics.Rect
 import android.net.Uri
@@ -48,7 +49,18 @@ class FWallpaperService : WallpaperService() {
         val folder = preferences.getString("source_folder", null)
 
         return try {
-            Uri.parse(folder)
+            Uri.parse(folder).let {
+                val permission = contentResolver
+                    .persistedUriPermissions
+                    .find { uriPermission -> uriPermission.uri == it && uriPermission.isReadPermission }
+
+                if (permission != null) {
+                    it
+                } else {
+                    Log.d("FWallpaper", "No permission to read source_folder uri.")
+                    null
+                }
+            }
         } catch (e: Exception) {
             Log.e("FWallpaper", "Failed to parse uri due to ${e.message}")
             return null
